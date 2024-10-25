@@ -1,87 +1,51 @@
+// Importation des modules nécessaires
 const express = require('express');
-const mysql = require('mysql2');
+const { Client } = require('pg');
+require('dotenv').config(); // Charger les variables d'environnement
+
+// Initialisation de l'application Express
 const app = express();
+const PORT = process.env.PORT || 10000;
 
-// Middleware pour parser les JSON
-app.use(express.json());
-
-require('dotenv').config();
-
-const db = mysql.createConnection({
+// Configuration de la connexion PostgreSQL
+const dbClient = new Client({
   host: process.env.DB_HOST,
+  port: process.env.DB_PORT || 5432, // Le port par défaut pour PostgreSQL
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME
+  database: process.env.DB_NAME,
 });
 
 // Connexion à la base de données
-db.connect(err => {
-  if (err) {
-    console.error('Erreur de connexion à la base de données:', err);
-    return;
-  }
-  console.log('Connecté à la base de données MySQL');
-});
+dbClient.connect()
+  .then(() => console.log("Connecté à PostgreSQL"))
+  .catch((err) => console.error("Erreur de connexion à la base de données:", err));
 
-// Route d'exemple
+// Route de test
 app.get('/', (req, res) => {
-  res.send('Bienvenue sur l\'API todo list');
+  res.send('API Todo List est en cours d\'exécution');
 });
 
 // Démarrage du serveur
-const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`Serveur démarré sur le port ${PORT}`);
 });
 
+// Exemple de route pour récupérer des données de la base de données
+app.get('/todos', async (req, res) => {
+  try {
+    const result = await dbClient.query('SELECT * FROM todos');
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Erreur lors de la récupération des todos:", err);
+    res.status(500).send("Erreur serveur");
+  }
+});
 
-// Route pour obtenir toutes les tâches
-app.get('/tasks', (req, res) => {
-    db.query('SELECT * FROM tasks', (err, results) => {
-      if (err) {
-        return res.status(500).json({ error: err });
-      }
-      res.json(results);
-    });
-  });
-  
-  // Route pour ajouter une nouvelle tâche
-  app.post('/tasks', (req, res) => {
-    const { title } = req.body;
-    if (!title) {
-      return res.status(400).json({ error: 'Le titre est requis' });
-    }
-  
-    db.query('INSERT INTO tasks (title) VALUES (?)', [title], (err, result) => {
-      if (err) {
-        return res.status(500).json({ error: err });
-      }
-      res.status(201).json({ id: result.insertId, title, completed: false });
-    });
-  });
-  
-  // Route pour marquer une tâche comme complétée
-  app.put('/tasks/:id', (req, res) => {
-    const { id } = req.params;
-    const { completed } = req.body;
-  
-    db.query('UPDATE tasks SET completed = ? WHERE id = ?', [completed, id], (err, result) => {
-      if (err) {
-        return res.status(500).json({ error: err });
-      }
-      res.json({ message: 'Tâche mise à jour' });
-    });
-  });
-  
-  // Route pour supprimer une tâche
-  app.delete('/tasks/:id', (req, res) => {
-    const { id } = req.params;
-  
-    db.query('DELETE FROM tasks WHERE id = ?', [id], (err, result) => {
-      if (err) {
-        return res.status(500).json({ error: err });
-      }
-      res.json({ message: 'Tâche supprimée' });
-    });
-  });
-  
+// Fermer la connexion à la base de données lors de l'arrêt du serveur
+process.on('SIGINT', () => {
+  dbClient.end()
+    .then(() => console.log("Déconnexion de PostgreSQL"))
+    .catch(err => console.error("Erreur lors de la déconnexion:", err))
+    .finally(() => process.exit());
+});
